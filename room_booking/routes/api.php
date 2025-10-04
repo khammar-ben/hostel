@@ -7,8 +7,13 @@ use App\Http\Controllers\ActivityBookingController;
 use App\Http\Controllers\TelegramController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\OfferController;
+use App\Http\Controllers\HealthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
+// Health check routes (no auth required)
+Route::get('/health', [HealthController::class, 'check']);
+Route::get('/fallback', [HealthController::class, 'fallback']);
 
 // Public booking routes (no auth required)
 Route::get('/test', function () {

@@ -33,9 +33,11 @@ const Home = () => {
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [activeTab, setActiveTab] = useState('common-areas');
+  const [databaseStatus, setDatabaseStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [isFallbackMode, setIsFallbackMode] = useState(false);
 
   useEffect(() => {
-    fetchRooms();
+    checkDatabaseAndFetchData();
   }, []);
 
       // Auto-play slider
@@ -51,19 +53,92 @@ const Home = () => {
         }
       }, [rooms]);
 
-      const fetchRooms = async () => {
+      const checkDatabaseAndFetchData = async () => {
         try {
           setIsLoadingRooms(true);
+          setDatabaseStatus('checking');
+          
+          // First check database health
+          const healthResponse = await axiosClient.get('/api/health');
+          
+          if (healthResponse.data.success && healthResponse.data.database === 'connected') {
+            setDatabaseStatus('connected');
+            setIsFallbackMode(false);
+            await fetchRooms();
+          } else {
+            throw new Error('Database not connected');
+          }
+        } catch (error) {
+          console.error('Database check failed:', error);
+          setDatabaseStatus('disconnected');
+          setIsFallbackMode(true);
+          setRooms(getFallbackRooms());
+          toast.warning('Database temporarily unavailable. Showing sample content.');
+        } finally {
+          setIsLoadingRooms(false);
+        }
+      };
+
+      const fetchRooms = async () => {
+        try {
           const response = await axiosClient.get('/api/rooms/public');
           if (response.data.success) {
             setRooms(response.data.data);
           }
         } catch (error) {
           console.error('Failed to fetch rooms:', error);
-          toast.error('Failed to load rooms');
-        } finally {
-          setIsLoadingRooms(false);
+          throw error; // Re-throw to trigger fallback mode
         }
+      };
+
+      const getFallbackRooms = (): Room[] => {
+        return [
+          {
+            id: 1,
+            room_number: "101",
+            name: "Sample Private Room",
+            type: "Private Room",
+            capacity: 2,
+            floor: 1,
+            price: 45,
+            status: "available",
+            description: "Comfortable private room with modern amenities",
+            amenities: ["WiFi", "Air Conditioning", "Private Bathroom"],
+            is_available_for_booking: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          {
+            id: 2,
+            room_number: "201",
+            name: "Sample Shared Dorm",
+            type: "Shared Dormitory",
+            capacity: 6,
+            floor: 2,
+            price: 25,
+            status: "available",
+            description: "Budget-friendly shared accommodation",
+            amenities: ["WiFi", "Shared Bathroom", "Locker"],
+            is_available_for_booking: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          {
+            id: 3,
+            room_number: "301",
+            name: "Sample Family Suite",
+            type: "Family Suite",
+            capacity: 4,
+            floor: 3,
+            price: 80,
+            status: "available",
+            description: "Spacious suite perfect for families",
+            amenities: ["WiFi", "Kitchenette", "Private Bathroom", "Balcony"],
+            is_available_for_booking: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
+        ];
       };
 
       // Get all available rooms for display
@@ -128,6 +203,26 @@ const Home = () => {
         <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/40 to-black/60" />
         
         <div className="relative z-10 w-full max-w-7xl mx-auto px-4 py-20">
+          {/* Database Status Indicator */}
+          {isFallbackMode && (
+            <div className="mb-6 p-4 bg-yellow-500/20 backdrop-blur-sm border border-yellow-500/30 rounded-lg text-yellow-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  <span className="font-medium">Database temporarily unavailable - Showing sample content</span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-yellow-400 text-yellow-100 hover:bg-yellow-500/20"
+                  onClick={() => checkDatabaseAndFetchData()}
+                >
+                  Retry Connection
+                </Button>
+              </div>
+            </div>
+          )}
+          
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Hero Content */}
             <div className="text-white">
@@ -147,10 +242,16 @@ const Home = () => {
                 <Button 
                   size="lg" 
                   className="bg-primary hover:bg-primary/90 text-white px-8 py-4 rounded-xl font-semibold shadow-lg transition-all duration-200"
-                  onClick={() => navigate('/rooms')}
+                  onClick={() => {
+                    if (isFallbackMode) {
+                      toast.warning('Booking is temporarily unavailable. Please try again later or contact us directly.');
+                    } else {
+                      navigate('/rooms');
+                    }
+                  }}
                 >
                   <Calendar className="w-5 h-5 mr-2" />
-                  Book Your Stay
+                  {isFallbackMode ? 'Booking Unavailable' : 'Book Your Stay'}
                 </Button>
                 <Button 
                   size="lg" 
@@ -183,8 +284,15 @@ const Home = () => {
             <div className="lg:ml-8">
               <Card className="p-8 backdrop-blur-md bg-white/95 shadow-2xl rounded-2xl">
                 <div className="mb-6">
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Book Your Room</h3>
-                  <p className="text-gray-600">Find the perfect accommodation for your stay</p>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                    {isFallbackMode ? 'Sample Booking Form' : 'Book Your Room'}
+                  </h3>
+                  <p className="text-gray-600">
+                    {isFallbackMode 
+                      ? 'Database temporarily unavailable. This is a sample form.' 
+                      : 'Find the perfect accommodation for your stay'
+                    }
+                  </p>
                 </div>
                 
                 <form className="space-y-6">
@@ -242,10 +350,16 @@ const Home = () => {
                   {/* Search Button */}
                   <Button 
                     className="w-full bg-primary hover:bg-primary/90 text-white py-4 rounded-xl text-lg font-semibold shadow-lg transition-all duration-200"
-                    onClick={() => navigate('/rooms')}
+                    onClick={() => {
+                      if (isFallbackMode) {
+                        toast.warning('Search is temporarily unavailable. Please try again later or contact us directly.');
+                      } else {
+                        navigate('/rooms');
+                      }
+                    }}
                   >
                     <Search className="w-5 h-5 mr-2" />
-                    Check Availability
+                    {isFallbackMode ? 'Search Unavailable' : 'Check Availability'}
                   </Button>
 
                   {/* Contact Info */}
